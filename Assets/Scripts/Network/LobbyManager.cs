@@ -7,6 +7,8 @@ using UnityEngine;
 public class LobbyManager : MonoBehaviour, INetworkRunnerCallbacks
 {
     public static Action<List<SessionInfo>> OnSessionListUpdatedAction;
+    public static Action<List<PlayerRef>> OnPlayerListUpdatedAction;
+    public static Action OnLobbyConnectedAction; 
 
     [SerializeField] NetworkRunner _runner;
 
@@ -14,7 +16,7 @@ public class LobbyManager : MonoBehaviour, INetworkRunnerCallbacks
     {
     }
 
-    public async void ConnectToLobby()
+    public async void ConnectToLobby(string lobbyName)
     {
         if (!_runner)
         {
@@ -23,21 +25,56 @@ public class LobbyManager : MonoBehaviour, INetworkRunnerCallbacks
 
         _runner.AddCallbacks(this);
 
-        StartGameResult result = await _runner.JoinSessionLobby(SessionLobby.Shared);
+        Debug.Log($"[Lobby] Attempting to connect to lobby: '{lobbyName}'");
+
+        StartGameResult result = await _runner.JoinSessionLobby(SessionLobby.Custom, lobbyName);
 
         if (result.Ok)
         {
-            Debug.Log($"Connected to lobby: {_runner.SessionInfo.Name}");
+            Debug.Log($"[Lobby] Successfully connected to lobby: '{lobbyName}'");
+            OnLobbyConnectedAction?.Invoke(); 
+        }
+        else
+        {
+            Debug.LogError($"[Lobby] Failed to connect to lobby '{lobbyName}': {result.ShutdownReason}");
         }
     }
 
     public async void JoinSession(string sessionName)
     {
-        await _runner.StartGame(new StartGameArgs
+        Debug.Log($"[Session] Attempting to join session: '{sessionName}'");
+
+        var result = await _runner.StartGame(new StartGameArgs
         {
             SessionName = sessionName,
-            GameMode = GameMode.Shared
+            GameMode = GameMode.Shared,
+            IsVisible = true,
+            IsOpen = true
         });
+
+        if (result.Ok)
+            Debug.Log($"[Session] Successfully joined session: '{sessionName}'");
+        else
+            Debug.LogError($"[Session] Failed to join session '{sessionName}': {result.ShutdownReason}");
+    }
+
+    public async void CreateSession(string sessionName, int maxPlayers)
+    {
+        Debug.Log($"[Session] Attempting to create session: '{sessionName}' with {maxPlayers} max players");
+
+        var result = await _runner.StartGame(new StartGameArgs
+        {
+            SessionName = sessionName,
+            GameMode = GameMode.Shared,
+            PlayerCount = maxPlayers,
+            IsVisible = true,
+            IsOpen = true
+        });
+
+        if (result.Ok)
+            Debug.Log($"[Session] Successfully created session: '{sessionName}'");
+        else
+            Debug.LogError($"[Session] Failed to create session '{sessionName}': {result.ShutdownReason}");
     }
 
     public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
@@ -50,10 +87,12 @@ public class LobbyManager : MonoBehaviour, INetworkRunnerCallbacks
 
     public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
+        OnPlayerListUpdatedAction?.Invoke(new List<PlayerRef>(_runner.ActivePlayers));
     }
 
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
+        OnPlayerListUpdatedAction?.Invoke(new List<PlayerRef>(_runner.ActivePlayers));
     }
 
     public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
@@ -98,9 +137,15 @@ public class LobbyManager : MonoBehaviour, INetworkRunnerCallbacks
 
     public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
     {
-        //TODO after connetion list all sessions to UI 
+        Debug.Log($"[Lobby] OnSessionListUpdated fired — {sessionList.Count} session(s) received");
 
-        OnSessionListUpdatedAction.Invoke(sessionList);
+        foreach (var session in sessionList)
+        {
+            Debug.Log(
+                $"[Lobby]   -> Session: '{session.Name}' | Players: {session.PlayerCount}/{session.MaxPlayers} | Open: {session.IsOpen} | Visible: {session.IsVisible}");
+        }
+
+        OnSessionListUpdatedAction?.Invoke(sessionList);
     }
 
     public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data)
