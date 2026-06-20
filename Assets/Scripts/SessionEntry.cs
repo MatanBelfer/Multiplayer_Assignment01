@@ -25,4 +25,9 @@ public class SessionEntry : MonoBehaviour
         joinButton.onClick.RemoveAllListeners();
         joinButton.onClick.AddListener(() => _onJoinClicked?.Invoke(_sessionName));
     }
+    
+    public void SetJoinButtonInteractable(bool interactable)
+    {
+        joinButton.interactable = interactable;
+    }
 }
